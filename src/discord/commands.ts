@@ -2,6 +2,7 @@ import {
   SlashCommandBuilder,
   type RESTPostAPIChatInputApplicationCommandsJSONBody,
 } from "discord.js";
+import { ServiceError } from "../db/services.ts";
 import { GAME_STATUSES, gameStatusChoices } from "../domain/gameStatus.ts";
 
 const showListChoices = [
@@ -87,20 +88,28 @@ export const commandPayloads: RESTPostAPIChatInputApplicationCommandsJSONBody[] 
 
   new SlashCommandBuilder()
     .setName("notes")
-    .setDescription("Add a dated note for a game by G# id")
-    .addIntegerOption((opt) =>
-      opt.setName("id").setDescription("Game id (G#)").setRequired(true),
+    .setDescription("List or add dated notes for a recommendation (R#) or game (G#)")
+    .addStringOption((opt) =>
+      opt
+        .setName("id")
+        .setDescription("Entry id from /show-list, e.g. R#3 or G#12")
+        .setRequired(true),
     )
     .addStringOption((opt) =>
-      opt.setName("note").setDescription("Note text").setRequired(true),
+      opt
+        .setName("action")
+        .setDescription("What to do (defaults to list)")
+        .setRequired(false)
+        .addChoices(
+          { name: "List", value: "list" },
+          { name: "Add", value: "add" },
+        ),
     )
-    .toJSON(),
-
-  new SlashCommandBuilder()
-    .setName("list-notes")
-    .setDescription("List dated notes for a game by G# id")
-    .addIntegerOption((opt) =>
-      opt.setName("id").setDescription("Game id (G#)").setRequired(true),
+    .addStringOption((opt) =>
+      opt
+        .setName("note")
+        .setDescription("Note text (required when action is add)")
+        .setRequired(false),
     )
     .toJSON(),
 ];
@@ -110,6 +119,10 @@ export type ParsedShowListFilter =
   | "recommendations"
   | (typeof GAME_STATUSES)[number];
 
+export type ParsedEntryId =
+  | { kind: "recommendation"; id: number }
+  | { kind: "game"; id: number };
+
 export function parseShowListFilter(value: string | undefined): ParsedShowListFilter {
   if (!value || value === "all") {
     return "all";
@@ -118,4 +131,21 @@ export function parseShowListFilter(value: string | undefined): ParsedShowListFi
     return "recommendations";
   }
   return value as ParsedShowListFilter;
+}
+
+/** Parse ids like R#3, r3, G#12, g 12. */
+export function parseEntryId(raw: string): ParsedEntryId {
+  const match = raw.trim().match(/^(r|g)\s*#?\s*(\d+)$/i);
+  if (!match) {
+    throw new ServiceError('Expected an id like "R#3" or "G#12".', "invalid");
+  }
+
+  const id = Number(match[2]);
+  if (!Number.isInteger(id) || id < 1) {
+    throw new ServiceError('Expected an id like "R#3" or "G#12".', "invalid");
+  }
+
+  return match[1]!.toLowerCase() === "r"
+    ? { kind: "recommendation", id }
+    : { kind: "game", id };
 }

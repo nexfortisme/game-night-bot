@@ -17,11 +17,11 @@ When the user pastes a list or describes games:
 - Use add_game for owned/backlog/play history items.
 - Use promote_recommendation_to_game when they want to move a suggestion onto the games list.
 - Use update_game_status with game_id from list_games when they mention status changes (including setting in_rotation).
-- Use add_note / list_notes for dated notes about a specific game (session thoughts, who liked it, what to try next, etc.).
+- Use add_note / list_notes for dated notes about a specific game (G#) or recommendation (R#) (session thoughts, who liked it, what to try next, etc.).
 - Use remove_* only when asked to delete entries.
 
 Never invent the recommender: use the Discord user from context for add_recommendation and add_note.
-After changes, briefly summarize what you did. Mention that /show-list displays R# and G# ids for /update-status, /notes, /list-notes, and /remove.`;
+After changes, briefly summarize what you did. Mention that /show-list displays R# and G# ids for /update-status, /notes, and /remove.`;
 
 export const config = {
   discordToken: requireEnv("DISCORD_TOKEN"),

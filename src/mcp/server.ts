@@ -189,53 +189,103 @@ export function createMcpServer(db: Database, ctx: McpRequestContext): McpServer
     "add_note",
     {
       description:
-        "Add a dated note for a game. Provide game_id (G#) and/or game name. Notes are append-only history for a single game.",
+        "Add a dated note for a game (G#) or recommendation (R#). Provide one target by id and/or name. Notes are append-only.",
       inputSchema: {
         game_id: z.number().int().positive().optional().describe("Game id (G#) from list_games"),
-        name: z.string().optional().describe("Game title if id is unknown"),
+        recommendation_id: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Recommendation id (R#) from list_recommendations"),
+        name: z.string().optional().describe("Game or recommendation title if id is unknown"),
         note: z.string().describe("Note text to store"),
       },
     },
-    async ({ game_id, name, note }) => {
-      if (game_id == null && !name) {
-        return textResult("Provide game_id or name.");
+    async ({ game_id, recommendation_id, name, note }) => {
+      if (game_id == null && recommendation_id == null && !name) {
+        return textResult("Provide game_id, recommendation_id, or name.");
       }
-      const row = services.addNote(db, {
+      if (game_id != null && recommendation_id != null) {
+        return textResult("Provide either game_id or recommendation_id, not both.");
+      }
+
+      const input =
+        recommendation_id != null
+          ? {
+              recommendationId: recommendation_id,
+              recommendationName: name,
+            }
+          : game_id != null
+            ? { gameId: game_id, gameName: name }
+            : name
+              ? (() => {
+                  const game = services.findGameByName(db, ctx.guildId, name);
+                  if (game) {
+                    return { gameName: name };
+                  }
+                  return { recommendationName: name };
+                })()
+              : {};
+
+      const { note: row, target } = services.addNote(db, {
         guildId: ctx.guildId,
-        gameId: game_id,
-        gameName: name,
+        ...input,
         body: note,
         createdByUserId: ctx.userId,
         createdByDisplay: ctx.displayName,
       });
-      const game = services.getGameById(db, ctx.guildId, row.game_id)!;
       logInfo("Added note", {
         ...actor,
         noteId: row.id,
-        gameId: row.game_id,
-        gameName: game.name,
+        targetKind: target.kind,
+        targetId:
+          target.kind === "game" ? target.game.id : target.recommendation.id,
+        targetName:
+          target.kind === "game" ? target.game.name : target.recommendation.name,
       });
-      return textResult({ ok: true, note: row, game });
+      return textResult({ ok: true, note: row, target });
     },
   );
 
   server.registerTool(
     "list_notes",
     {
-      description: "List dated notes for a game by game_id (G#) and/or name.",
+      description:
+        "List dated notes for a game (G#) or recommendation (R#) by id and/or name.",
       inputSchema: {
         game_id: z.number().int().positive().optional(),
+        recommendation_id: z.number().int().positive().optional(),
         name: z.string().optional(),
       },
     },
-    async ({ game_id, name }) => {
-      if (game_id == null && !name) {
-        return textResult("Provide game_id or name.");
+    async ({ game_id, recommendation_id, name }) => {
+      if (game_id == null && recommendation_id == null && !name) {
+        return textResult("Provide game_id, recommendation_id, or name.");
       }
-      const result = services.listNotesForGame(db, ctx.guildId, {
-        gameId: game_id,
-        gameName: name,
-      });
+      if (game_id != null && recommendation_id != null) {
+        return textResult("Provide either game_id or recommendation_id, not both.");
+      }
+
+      const input =
+        recommendation_id != null
+          ? {
+              recommendationId: recommendation_id,
+              recommendationName: name,
+            }
+          : game_id != null
+            ? { gameId: game_id, gameName: name }
+            : name
+              ? (() => {
+                  const game = services.findGameByName(db, ctx.guildId, name);
+                  if (game) {
+                    return { gameName: name };
+                  }
+                  return { recommendationName: name };
+                })()
+              : {};
+
+      const result = services.listNotes(db, ctx.guildId, input);
       return textResult(result);
     },
   );

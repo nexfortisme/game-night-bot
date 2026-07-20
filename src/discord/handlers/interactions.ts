@@ -1,13 +1,15 @@
 import type { ChatInputCommandInteraction } from "discord.js";
+import { MessageFlags } from "discord.js";
 import { getDb } from "../../db/client.ts";
 import * as services from "../../db/services.ts";
 import { isGameStatus, type GameStatus } from "../../domain/gameStatus.ts";
 import { logError, logInfo } from "../../log.ts";
-import { parseShowListFilter } from "../commands.ts";
+import { parseEntryId, parseShowListFilter } from "../commands.ts";
 import {
   buildNotesListMessage,
   buildShowListMessage,
   formatNoteDate,
+  formatNoteTargetLabel,
   serviceErrorMessage,
 } from "../formatList.ts";
 
@@ -104,7 +106,10 @@ export async function handleInteraction(
         );
         const message = buildShowListMessage(db, guildId, filter);
         logInfo("Show list", { ...actorMeta(interaction), filter });
-        await interaction.editReply(message);
+        await interaction.editReply({
+          content: message,
+          flags: MessageFlags.SuppressEmbeds,
+        });
         break;
       }
       case "update-status": {
@@ -124,32 +129,56 @@ export async function handleInteraction(
         break;
       }
       case "notes": {
-        const id = interaction.options.getInteger("id", true);
-        const note = interaction.options.getString("note", true);
-        const row = services.addNote(db, {
+        const entry = parseEntryId(interaction.options.getString("id", true));
+        const noteText = interaction.options.getString("note") ?? undefined;
+        const actionRaw = interaction.options.getString("action");
+        const action =
+          actionRaw === "add" || actionRaw === "list"
+            ? actionRaw
+            : noteText
+              ? "add"
+              : "list";
+
+        const targetInput =
+          entry.kind === "recommendation"
+            ? { recommendationId: entry.id }
+            : { gameId: entry.id };
+
+        if (action === "list") {
+          const message = buildNotesListMessage(db, guildId, targetInput);
+          logInfo("List notes", {
+            ...actorMeta(interaction),
+            entryKind: entry.kind,
+            entryId: entry.id,
+          });
+          await interaction.editReply(message);
+          break;
+        }
+
+        if (!noteText?.trim()) {
+          throw new services.ServiceError(
+            "Provide note text when adding a note.",
+            "invalid",
+          );
+        }
+
+        const { note, target } = services.addNote(db, {
           guildId,
-          gameId: id,
-          body: note,
+          ...targetInput,
+          body: noteText,
           createdByUserId: interaction.user.id,
           createdByDisplay: interaction.user.displayName || interaction.user.username,
         });
-        const game = services.getGameById(db, guildId, row.game_id)!;
         logInfo("Added note", {
           ...actorMeta(interaction),
-          noteId: row.id,
-          gameId: row.game_id,
-          gameName: game.name,
+          noteId: note.id,
+          entryKind: entry.kind,
+          entryId: entry.id,
+          target: formatNoteTargetLabel(target),
         });
         await interaction.editReply(
-          `Added note **N#${row.id}** on **G#${game.id}** — ${game.name} (${formatNoteDate(row.created_at)}).`,
+          `Added note **N#${note.id}** on **${formatNoteTargetLabel(target)}** (${formatNoteDate(note.created_at)}).`,
         );
-        break;
-      }
-      case "list-notes": {
-        const id = interaction.options.getInteger("id", true);
-        const message = buildNotesListMessage(db, guildId, { gameId: id });
-        logInfo("List notes", { ...actorMeta(interaction), gameId: id });
-        await interaction.editReply(message);
         break;
       }
       default:

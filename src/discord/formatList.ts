@@ -8,14 +8,20 @@ import * as services from "../db/services.ts";
 
 export type ShowListFilter = "all" | "recommendations" | GameStatus;
 
+/** Wrap URLs so Discord does not generate link embeds. */
+function formatLink(link: string | null): string {
+  if (!link) {
+    return "";
+  }
+  return ` — <${link}>`;
+}
+
 function formatRecommendationLine(row: services.RecommendationRow): string {
-  const link = row.link ? ` — ${row.link}` : "";
-  return `R#${row.id} — **${row.name}** (by ${row.recommended_by_display})${link}`;
+  return `R#${row.id} — **${row.name}** (by ${row.recommended_by_display})${formatLink(row.link)}`;
 }
 
 function formatGameLine(row: services.GameRow): string {
-  const link = row.link ? ` — ${row.link}` : "";
-  return `G#${row.id} — **${row.name}** · ${formatGameStatus(row.status)}${link}`;
+  return `G#${row.id} — **${row.name}** · ${formatGameStatus(row.status)}${formatLink(row.link)}`;
 }
 
 export function formatNoteDate(iso: string): string {
@@ -28,6 +34,20 @@ export function formatNoteDate(iso: string): string {
 
 function formatNoteLine(row: services.NoteRow): string {
   return `N#${row.id} — ${formatNoteDate(row.created_at)} · ${row.created_by_display}\n${row.body}`;
+}
+
+function noteTargetHeader(target: services.NoteTarget): string {
+  if (target.kind === "game") {
+    return `**Notes for G#${target.game.id} — ${target.game.name}**`;
+  }
+  return `**Notes for R#${target.recommendation.id} — ${target.recommendation.name}**`;
+}
+
+export function formatNoteTargetLabel(target: services.NoteTarget): string {
+  if (target.kind === "game") {
+    return `G#${target.game.id} — ${target.game.name}`;
+  }
+  return `R#${target.recommendation.id} — ${target.recommendation.name}`;
 }
 
 export function buildShowListMessage(
@@ -84,10 +104,15 @@ export function buildShowListMessage(
 export function buildNotesListMessage(
   db: Database,
   guildId: string,
-  input: { gameId?: number; gameName?: string },
+  input: {
+    gameId?: number;
+    gameName?: string;
+    recommendationId?: number;
+    recommendationName?: string;
+  },
 ): string {
-  const { game, notes } = services.listNotesForGame(db, guildId, input);
-  const header = `**Notes for G#${game.id} — ${game.name}**`;
+  const { target, notes } = services.listNotes(db, guildId, input);
+  const header = noteTargetHeader(target);
   if (!notes.length) {
     return `${header}\n_(none)_`;
   }

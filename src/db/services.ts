@@ -29,12 +29,17 @@ export type GameRow = {
 export type NoteRow = {
   id: number;
   guild_id: string;
-  game_id: number;
+  game_id: number | null;
+  recommendation_id: number | null;
   body: string;
   created_by_user_id: string;
   created_by_display: string;
   created_at: string;
 };
+
+export type NoteTarget =
+  | { kind: "game"; game: GameRow }
+  | { kind: "recommendation"; recommendation: RecommendationRow };
 
 export class ServiceError extends Error {
   constructor(
@@ -368,8 +373,14 @@ export function promoteRecommendationToGame(
       name: recommendation.name,
       link: recommendation.link,
       status: input.status ?? "not_started",
-      recommendationId: recommendation.id,
+      recommendationId: null,
     });
+    db.run(
+      `UPDATE notes
+       SET game_id = ?, recommendation_id = NULL
+       WHERE guild_id = ? AND recommendation_id = ?`,
+      [game.id, input.guildId, recommendation.id],
+    );
     db.run(
       "DELETE FROM recommendations WHERE guild_id = ? AND id = ?",
       [input.guildId, recommendation.id],
@@ -382,41 +393,81 @@ export function promoteRecommendationToGame(
   }
 }
 
+export function resolveNoteTarget(
+  db: Database,
+  guildId: string,
+  input: {
+    gameId?: number;
+    gameName?: string;
+    recommendationId?: number;
+    recommendationName?: string;
+  },
+): NoteTarget {
+  const hasGame = input.gameId != null || Boolean(input.gameName);
+  const hasRecommendation =
+    input.recommendationId != null || Boolean(input.recommendationName);
+
+  if (hasGame && hasRecommendation) {
+    throw new ServiceError("Provide either a game or a recommendation, not both.", "invalid");
+  }
+  if (!hasGame && !hasRecommendation) {
+    throw new ServiceError("Provide a game (G#) or recommendation (R#).", "invalid");
+  }
+
+  if (hasGame) {
+    let game: GameRow | null = null;
+    if (input.gameId != null) {
+      game = getGameById(db, guildId, input.gameId);
+    } else if (input.gameName) {
+      game = findGameByName(db, guildId, input.gameName);
+    }
+    if (!game) {
+      throw new ServiceError("Game not found.", "not_found");
+    }
+    return { kind: "game", game };
+  }
+
+  let recommendation: RecommendationRow | null = null;
+  if (input.recommendationId != null) {
+    recommendation = getRecommendationById(db, guildId, input.recommendationId);
+  } else if (input.recommendationName) {
+    recommendation = findRecommendationByName(db, guildId, input.recommendationName);
+  }
+  if (!recommendation) {
+    throw new ServiceError("Recommendation not found.", "not_found");
+  }
+  return { kind: "recommendation", recommendation };
+}
+
 export function addNote(
   db: Database,
   input: {
     guildId: string;
     gameId?: number;
     gameName?: string;
+    recommendationId?: number;
+    recommendationName?: string;
     body: string;
     createdByUserId: string;
     createdByDisplay: string;
   },
-): NoteRow {
+): { note: NoteRow; target: NoteTarget } {
   const body = input.body.trim();
   if (!body) {
     throw new ServiceError("Note text is required.", "invalid");
   }
 
-  let game: GameRow | null = null;
-  if (input.gameId != null) {
-    game = getGameById(db, input.guildId, input.gameId);
-  } else if (input.gameName) {
-    game = findGameByName(db, input.guildId, input.gameName);
-  }
-
-  if (!game) {
-    throw new ServiceError("Game not found.", "not_found");
-  }
-
+  const target = resolveNoteTarget(db, input.guildId, input);
   const createdAt = nowIso();
   const result = db.run(
     `INSERT INTO notes (
-      guild_id, game_id, body, created_by_user_id, created_by_display, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?)`,
+      guild_id, game_id, recommendation_id, body,
+      created_by_user_id, created_by_display, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [
       input.guildId,
-      game.id,
+      target.kind === "game" ? target.game.id : null,
+      target.kind === "recommendation" ? target.recommendation.id : null,
       body,
       input.createdByUserId,
       input.createdByDisplay,
@@ -424,7 +475,7 @@ export function addNote(
     ],
   );
   const id = Number(result.lastInsertRowid);
-  return getNoteById(db, input.guildId, id)!;
+  return { note: getNoteById(db, input.guildId, id)!, target };
 }
 
 export function getNoteById(
@@ -435,37 +486,46 @@ export function getNoteById(
   return (
     db
       .query<NoteRow, [string, number]>(
-        `SELECT id, guild_id, game_id, body, created_by_user_id, created_by_display, created_at
+        `SELECT id, guild_id, game_id, recommendation_id, body,
+                created_by_user_id, created_by_display, created_at
          FROM notes WHERE guild_id = ? AND id = ?`,
       )
       .get(guildId, id) ?? null
   );
 }
 
-export function listNotesForGame(
+export function listNotes(
   db: Database,
   guildId: string,
-  input: { gameId?: number; gameName?: string },
-): { game: GameRow; notes: NoteRow[] } {
-  let game: GameRow | null = null;
-  if (input.gameId != null) {
-    game = getGameById(db, guildId, input.gameId);
-  } else if (input.gameName) {
-    game = findGameByName(db, guildId, input.gameName);
-  }
+  input: {
+    gameId?: number;
+    gameName?: string;
+    recommendationId?: number;
+    recommendationName?: string;
+  },
+): { target: NoteTarget; notes: NoteRow[] } {
+  const target = resolveNoteTarget(db, guildId, input);
 
-  if (!game) {
-    throw new ServiceError("Game not found.", "not_found");
-  }
+  const notes =
+    target.kind === "game"
+      ? db
+          .query<NoteRow, [string, number]>(
+            `SELECT id, guild_id, game_id, recommendation_id, body,
+                    created_by_user_id, created_by_display, created_at
+             FROM notes WHERE guild_id = ? AND game_id = ?
+             ORDER BY created_at ASC, id ASC`,
+          )
+          .all(guildId, target.game.id)
+      : db
+          .query<NoteRow, [string, number]>(
+            `SELECT id, guild_id, game_id, recommendation_id, body,
+                    created_by_user_id, created_by_display, created_at
+             FROM notes WHERE guild_id = ? AND recommendation_id = ?
+             ORDER BY created_at ASC, id ASC`,
+          )
+          .all(guildId, target.recommendation.id);
 
-  const notes = db
-    .query<NoteRow, [string, number]>(
-      `SELECT id, guild_id, game_id, body, created_by_user_id, created_by_display, created_at
-       FROM notes WHERE guild_id = ? AND game_id = ? ORDER BY created_at ASC, id ASC`,
-    )
-    .all(guildId, game.id);
-
-  return { game, notes };
+  return { target, notes };
 }
 
 function isSqliteUnique(error: unknown): boolean {
