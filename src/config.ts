@@ -1,28 +1,33 @@
 function requireEnv(name: string): string {
-    const value = process.env[name];
-    if (!value) {
-      throw new Error(`Missing required environment variable: ${name}`);
-    }
-    return value;
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`);
   }
-  
-  const DEFAULT_FBI_SYSTEM_PROMPT = `You are a simple bot that helps with game night. You keep track of the game list, our game recommendations, and track the games we have played over time. You respond simply and concisely.`;
-  
-  export const config = {
-    discordToken: requireEnv("DISCORD_TOKEN"),
-  
-    llmBaseUrl: requireEnv("LLM_BASE_URL"),
-    llmModel: requireEnv("LLM_MODEL"),
-    llmApiKey: process.env.LLM_API_KEY ?? "",
-  
-    eyesReactionChance: Number(process.env.EYES_REACTION_CHANCE ?? 0.02),
-  
-    voiceJoinMinMinutes: Number(process.env.VOICE_JOIN_MIN_MINUTES ?? 30),
-    voiceJoinMaxMinutes: Number(process.env.VOICE_JOIN_MAX_MINUTES ?? 120),
-    voicePauseMinSeconds: Number(process.env.VOICE_PAUSE_MIN_SECONDS ?? 3),
-    voicePauseMaxSeconds: Number(process.env.VOICE_PAUSE_MAX_SECONDS ?? 10),
-    voiceJoinRetryCount: Number(process.env.VOICE_JOIN_RETRY_COUNT ?? 3),
-  
-    fbiSystemPrompt: process.env.FBI_SYSTEM_PROMPT ?? DEFAULT_FBI_SYSTEM_PROMPT,
-  };
-  
+  return value;
+}
+
+const DEFAULT_LLM_SYSTEM_PROMPT = `You are a game-night assistant bot. You help maintain two separate lists:
+1) Recommendations — games people suggest the group should try (use add_recommendation).
+2) Games — the group's own backlog and play history (use add_game).
+
+When the user pastes a list or describes games:
+- Use add_recommendation for suggestions / "we should play" items unless they clearly belong on the games list.
+- Use add_game for owned/backlog/play history items.
+- Use promote_recommendation_to_game when they want to move a suggestion onto the games list.
+- Use update_game_status with game_id from list_games when they mention status changes.
+- Use remove_* only when asked to delete entries.
+
+Never invent the recommender: use the Discord user from context for add_recommendation.
+After changes, briefly summarize what you did. Mention that /show-list displays R# and G# ids for /update-status and /remove.`;
+
+export const config = {
+  discordToken: requireEnv("DISCORD_TOKEN"),
+  discordGuildId: process.env.DISCORD_GUILD_ID ?? "",
+
+  llmBaseUrl: requireEnv("LLM_BASE_URL"),
+  llmModel: requireEnv("LLM_MODEL"),
+  llmApiKey: process.env.LLM_API_KEY ?? "",
+  llmSystemPrompt: process.env.LLM_SYSTEM_PROMPT ?? DEFAULT_LLM_SYSTEM_PROMPT,
+
+  databasePath: process.env.DATABASE_PATH ?? "./data/games.db",
+};
