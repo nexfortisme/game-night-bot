@@ -25,5 +25,7 @@ export function gameStatusChoices(): { name: string; value: GameStatus }[] {
 }
 
 export function formatGameStatus(status: GameStatus): string {
-  return status.replaceAll("_", " ");
+  return status
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
