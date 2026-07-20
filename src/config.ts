@@ -1,9 +1,35 @@
+import { logWarn } from "./log.ts";
+
 function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
     throw new Error(`Missing required environment variable: ${name}`);
   }
   return value;
+}
+
+/**
+ * Compose uses network_mode: host, so the bot shares the host network stack.
+ * host.docker.internal is for bridge networking (and often missing on Linux);
+ * rewrite it to loopback so older .env files keep working.
+ */
+function normalizeLlmBaseUrl(raw: string): string {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return raw;
+  }
+  if (url.hostname !== "host.docker.internal") {
+    return raw;
+  }
+  url.hostname = "127.0.0.1";
+  const normalized = url.toString().replace(/\/$/, "");
+  logWarn("Rewrote LLM_BASE_URL host.docker.internal → 127.0.0.1 (Compose uses host networking)", {
+    from: raw,
+    to: normalized,
+  });
+  return normalized;
 }
 
 const DEFAULT_LLM_SYSTEM_PROMPT = `You are a game-night assistant bot. You help maintain two separate lists:
@@ -27,7 +53,7 @@ export const config = {
   discordToken: requireEnv("DISCORD_TOKEN"),
   discordGuildId: process.env.DISCORD_GUILD_ID ?? "",
 
-  llmBaseUrl: requireEnv("LLM_BASE_URL"),
+  llmBaseUrl: normalizeLlmBaseUrl(requireEnv("LLM_BASE_URL")),
   llmModel: requireEnv("LLM_MODEL"),
   llmApiKey: process.env.LLM_API_KEY ?? "",
   llmSystemPrompt: process.env.LLM_SYSTEM_PROMPT ?? DEFAULT_LLM_SYSTEM_PROMPT,
