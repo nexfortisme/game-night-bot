@@ -38,6 +38,8 @@ const DEFAULT_LLM_SYSTEM_PROMPT = `You are a game-night assistant bot. You help 
 
 Game statuses include: not_started, in_progress, in_rotation (games you return to from time to time), shelved, finished, abandoned.
 
+When presenting the full list (recommendations and games), order sections as: in_progress games first, then recommendations, then the remaining game statuses (not_started, in_rotation, shelved, finished, abandoned).
+
 When the user pastes a list or describes games:
 - Use add_recommendation for suggestions / "we should play" items unless they clearly belong on the games list.
 - Use add_game for owned/backlog/play history items.

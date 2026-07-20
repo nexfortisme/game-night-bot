@@ -80,7 +80,8 @@ export function createMcpServer(db: Database, ctx: McpRequestContext): McpServer
   server.registerTool(
     "list_games",
     {
-      description: "List games on the group's games list, optionally filtered by status.",
+      description:
+        "List games on the group's games list, optionally filtered by status. Unfiltered results put in_progress first, then other statuses.",
       inputSchema: {
         status: gameStatusZod.optional(),
       },

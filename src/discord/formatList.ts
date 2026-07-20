@@ -50,6 +50,33 @@ export function formatNoteTargetLabel(target: services.NoteTarget): string {
   return `R#${target.recommendation.id} — ${target.recommendation.name}`;
 }
 
+function pushRecommendationsSection(
+  sections: string[],
+  db: Database,
+  guildId: string,
+): void {
+  const recs = services.listRecommendations(db, guildId);
+  sections.push(
+    recs.length
+      ? `**Recommendations**\n${recs.map(formatRecommendationLine).join("\n")}`
+      : "**Recommendations**\n_(none)_",
+  );
+}
+
+function pushGameStatusSection(
+  sections: string[],
+  games: services.GameRow[],
+  status: GameStatus,
+): void {
+  const group = games.filter((g) => g.status === status);
+  const title = formatGameStatus(status);
+  sections.push(
+    group.length
+      ? `**Games — ${title}**\n${group.map(formatGameLine).join("\n")}`
+      : `**Games — ${title}**\n_(none)_`,
+  );
+}
+
 export function buildShowListMessage(
   db: Database,
   guildId: string,
@@ -57,40 +84,26 @@ export function buildShowListMessage(
 ): string {
   const sections: string[] = [];
 
-  if (filter === "all" || filter === "recommendations") {
-    const recs = services.listRecommendations(db, guildId);
-    if (filter === "recommendations" || filter === "all") {
-      sections.push(
-        recs.length
-          ? `**Recommendations**\n${recs.map(formatRecommendationLine).join("\n")}`
-          : "**Recommendations**\n_(none)_",
-      );
-    }
-  }
-
-  if (filter !== "recommendations") {
-    const games =
-      filter === "all"
-        ? services.listGames(db, guildId)
-        : services.listGames(db, guildId, filter);
-
-    if (filter === "all") {
-      for (const status of GAME_STATUSES) {
-        const group = games.filter((g) => g.status === status);
-        const title = formatGameStatus(status);
-        sections.push(
-          group.length
-            ? `**Games — ${title}**\n${group.map(formatGameLine).join("\n")}`
-            : `**Games — ${title}**\n_(none)_`,
-        );
+  if (filter === "recommendations") {
+    pushRecommendationsSection(sections, db, guildId);
+  } else if (filter === "all") {
+    const games = services.listGames(db, guildId);
+    // Full-list order: in progress → recommendations → remaining statuses.
+    pushGameStatusSection(sections, games, "in_progress");
+    pushRecommendationsSection(sections, db, guildId);
+    for (const status of GAME_STATUSES) {
+      if (status === "in_progress") {
+        continue;
       }
-    } else {
-      sections.push(
-        games.length
-          ? `**Games — ${formatGameStatus(filter)}**\n${games.map(formatGameLine).join("\n")}`
-          : `**Games — ${formatGameStatus(filter)}**\n_(none)_`,
-      );
+      pushGameStatusSection(sections, games, status);
     }
+  } else {
+    const games = services.listGames(db, guildId, filter);
+    sections.push(
+      games.length
+        ? `**Games — ${formatGameStatus(filter)}**\n${games.map(formatGameLine).join("\n")}`
+        : `**Games — ${formatGameStatus(filter)}**\n_(none)_`,
+    );
   }
 
   const body = sections.join("\n\n");

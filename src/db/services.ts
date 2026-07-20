@@ -240,7 +240,16 @@ export function listGames(
   return db
     .query<GameRow, [string]>(
       `SELECT id, guild_id, name, status, link, recommendation_id, created_at, updated_at, finished_at
-       FROM games WHERE guild_id = ? ORDER BY name COLLATE NOCASE`,
+       FROM games WHERE guild_id = ?
+       ORDER BY CASE status
+         WHEN 'in_progress' THEN 0
+         WHEN 'not_started' THEN 1
+         WHEN 'in_rotation' THEN 2
+         WHEN 'shelved' THEN 3
+         WHEN 'finished' THEN 4
+         WHEN 'abandoned' THEN 5
+         ELSE 6
+       END, name COLLATE NOCASE`,
     )
     .all(guildId);
 }
