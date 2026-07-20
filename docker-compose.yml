@@ -4,7 +4,10 @@ services:
     env_file: .env
     environment:
       DATABASE_PATH: /data/games.db
-      # LLM_BASE_URL: http://host.docker.internal:1234/v1
+      # LLM_BASE_URL: http://host.docker.internal:11434/v1
+    # Needed on Linux so host.docker.internal resolves to the host (Docker Desktop provides it on Mac/Windows).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./data:/data
     restart: unless-stopped
