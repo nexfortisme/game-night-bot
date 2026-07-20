@@ -84,6 +84,25 @@ export const commandPayloads: RESTPostAPIChatInputApplicationCommandsJSONBody[] 
         .addChoices(...gameStatusChoices()),
     )
     .toJSON(),
+
+  new SlashCommandBuilder()
+    .setName("notes")
+    .setDescription("Add a dated note for a game by G# id")
+    .addIntegerOption((opt) =>
+      opt.setName("id").setDescription("Game id (G#)").setRequired(true),
+    )
+    .addStringOption((opt) =>
+      opt.setName("note").setDescription("Note text").setRequired(true),
+    )
+    .toJSON(),
+
+  new SlashCommandBuilder()
+    .setName("list-notes")
+    .setDescription("List dated notes for a game by G# id")
+    .addIntegerOption((opt) =>
+      opt.setName("id").setDescription("Game id (G#)").setRequired(true),
+    )
+    .toJSON(),
 ];
 
 export type ParsedShowListFilter =

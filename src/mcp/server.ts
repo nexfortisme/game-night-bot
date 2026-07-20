@@ -185,5 +185,60 @@ export function createMcpServer(db: Database, ctx: McpRequestContext): McpServer
     },
   );
 
+  server.registerTool(
+    "add_note",
+    {
+      description:
+        "Add a dated note for a game. Provide game_id (G#) and/or game name. Notes are append-only history for a single game.",
+      inputSchema: {
+        game_id: z.number().int().positive().optional().describe("Game id (G#) from list_games"),
+        name: z.string().optional().describe("Game title if id is unknown"),
+        note: z.string().describe("Note text to store"),
+      },
+    },
+    async ({ game_id, name, note }) => {
+      if (game_id == null && !name) {
+        return textResult("Provide game_id or name.");
+      }
+      const row = services.addNote(db, {
+        guildId: ctx.guildId,
+        gameId: game_id,
+        gameName: name,
+        body: note,
+        createdByUserId: ctx.userId,
+        createdByDisplay: ctx.displayName,
+      });
+      const game = services.getGameById(db, ctx.guildId, row.game_id)!;
+      logInfo("Added note", {
+        ...actor,
+        noteId: row.id,
+        gameId: row.game_id,
+        gameName: game.name,
+      });
+      return textResult({ ok: true, note: row, game });
+    },
+  );
+
+  server.registerTool(
+    "list_notes",
+    {
+      description: "List dated notes for a game by game_id (G#) and/or name.",
+      inputSchema: {
+        game_id: z.number().int().positive().optional(),
+        name: z.string().optional(),
+      },
+    },
+    async ({ game_id, name }) => {
+      if (game_id == null && !name) {
+        return textResult("Provide game_id or name.");
+      }
+      const result = services.listNotesForGame(db, ctx.guildId, {
+        gameId: game_id,
+        gameName: name,
+      });
+      return textResult(result);
+    },
+  );
+
   return server;
 }

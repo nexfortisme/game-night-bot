@@ -3,6 +3,7 @@ import { z } from "zod";
 export const GAME_STATUSES = [
   "not_started",
   "in_progress",
+  "in_rotation",
   "shelved",
   "finished",
   "abandoned",

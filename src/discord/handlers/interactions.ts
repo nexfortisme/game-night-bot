@@ -4,7 +4,12 @@ import * as services from "../../db/services.ts";
 import { isGameStatus, type GameStatus } from "../../domain/gameStatus.ts";
 import { logError, logInfo } from "../../log.ts";
 import { parseShowListFilter } from "../commands.ts";
-import { buildShowListMessage, serviceErrorMessage } from "../formatList.ts";
+import {
+  buildNotesListMessage,
+  buildShowListMessage,
+  formatNoteDate,
+  serviceErrorMessage,
+} from "../formatList.ts";
 
 function actorMeta(interaction: ChatInputCommandInteraction) {
   return {
@@ -116,6 +121,35 @@ export async function handleInteraction(
           status: row.status,
         });
         await interaction.editReply(`Updated **G#${row.id}** — ${row.name} → ${row.status}.`);
+        break;
+      }
+      case "notes": {
+        const id = interaction.options.getInteger("id", true);
+        const note = interaction.options.getString("note", true);
+        const row = services.addNote(db, {
+          guildId,
+          gameId: id,
+          body: note,
+          createdByUserId: interaction.user.id,
+          createdByDisplay: interaction.user.displayName || interaction.user.username,
+        });
+        const game = services.getGameById(db, guildId, row.game_id)!;
+        logInfo("Added note", {
+          ...actorMeta(interaction),
+          noteId: row.id,
+          gameId: row.game_id,
+          gameName: game.name,
+        });
+        await interaction.editReply(
+          `Added note **N#${row.id}** on **G#${game.id}** — ${game.name} (${formatNoteDate(row.created_at)}).`,
+        );
+        break;
+      }
+      case "list-notes": {
+        const id = interaction.options.getInteger("id", true);
+        const message = buildNotesListMessage(db, guildId, { gameId: id });
+        logInfo("List notes", { ...actorMeta(interaction), gameId: id });
+        await interaction.editReply(message);
         break;
       }
       default:

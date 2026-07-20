@@ -26,6 +26,16 @@ export type GameRow = {
   finished_at: string | null;
 };
 
+export type NoteRow = {
+  id: number;
+  guild_id: string;
+  game_id: number;
+  body: string;
+  created_by_user_id: string;
+  created_by_display: string;
+  created_at: string;
+};
+
 export class ServiceError extends Error {
   constructor(
     message: string,
@@ -293,7 +303,11 @@ export function updateGameStatus(
   let finishedAt = existing.finished_at;
   if (terminalStatuses().includes(status)) {
     finishedAt = updatedAt;
-  } else if (status === "in_progress" || status === "not_started") {
+  } else if (
+    status === "in_progress" ||
+    status === "not_started" ||
+    status === "in_rotation"
+  ) {
     finishedAt = null;
   }
 
@@ -366,6 +380,92 @@ export function promoteRecommendationToGame(
     db.exec("ROLLBACK");
     throw error;
   }
+}
+
+export function addNote(
+  db: Database,
+  input: {
+    guildId: string;
+    gameId?: number;
+    gameName?: string;
+    body: string;
+    createdByUserId: string;
+    createdByDisplay: string;
+  },
+): NoteRow {
+  const body = input.body.trim();
+  if (!body) {
+    throw new ServiceError("Note text is required.", "invalid");
+  }
+
+  let game: GameRow | null = null;
+  if (input.gameId != null) {
+    game = getGameById(db, input.guildId, input.gameId);
+  } else if (input.gameName) {
+    game = findGameByName(db, input.guildId, input.gameName);
+  }
+
+  if (!game) {
+    throw new ServiceError("Game not found.", "not_found");
+  }
+
+  const createdAt = nowIso();
+  const result = db.run(
+    `INSERT INTO notes (
+      guild_id, game_id, body, created_by_user_id, created_by_display, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?)`,
+    [
+      input.guildId,
+      game.id,
+      body,
+      input.createdByUserId,
+      input.createdByDisplay,
+      createdAt,
+    ],
+  );
+  const id = Number(result.lastInsertRowid);
+  return getNoteById(db, input.guildId, id)!;
+}
+
+export function getNoteById(
+  db: Database,
+  guildId: string,
+  id: number,
+): NoteRow | null {
+  return (
+    db
+      .query<NoteRow, [string, number]>(
+        `SELECT id, guild_id, game_id, body, created_by_user_id, created_by_display, created_at
+         FROM notes WHERE guild_id = ? AND id = ?`,
+      )
+      .get(guildId, id) ?? null
+  );
+}
+
+export function listNotesForGame(
+  db: Database,
+  guildId: string,
+  input: { gameId?: number; gameName?: string },
+): { game: GameRow; notes: NoteRow[] } {
+  let game: GameRow | null = null;
+  if (input.gameId != null) {
+    game = getGameById(db, guildId, input.gameId);
+  } else if (input.gameName) {
+    game = findGameByName(db, guildId, input.gameName);
+  }
+
+  if (!game) {
+    throw new ServiceError("Game not found.", "not_found");
+  }
+
+  const notes = db
+    .query<NoteRow, [string, number]>(
+      `SELECT id, guild_id, game_id, body, created_by_user_id, created_by_display, created_at
+       FROM notes WHERE guild_id = ? AND game_id = ? ORDER BY created_at ASC, id ASC`,
+    )
+    .all(guildId, game.id);
+
+  return { game, notes };
 }
 
 function isSqliteUnique(error: unknown): boolean {

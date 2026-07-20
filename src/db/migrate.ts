@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 const schemaSql = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), "schema.sql"),
