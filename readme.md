@@ -75,13 +75,15 @@ Or build/run the image manually:
 
 ```bash
 docker build -t game-night-bot .
-docker run --env-file .env \
+docker run --network host --env-file .env \
   -e DATABASE_PATH=/data/games.db \
   -v "$(pwd)/data:/data" \
   game-night-bot
 ```
 
-When the bot runs in Docker and the LLM is on the host, set `LLM_BASE_URL` to something like `http://host.docker.internal:11434/v1` (Ollama) or `:1234/v1` (LM Studio). Compose maps `host.docker.internal` via `extra_hosts` (required on Linux). If the host LLM only binds to `127.0.0.1`, the container still cannot reach it — bind it on all interfaces (e.g. `OLLAMA_HOST=0.0.0.0:11434`) or use `network_mode: host`.
+Compose uses `network_mode: host` so a host LLM is reachable on loopback. Set `LLM_BASE_URL` to `http://127.0.0.1:11434/v1` (Ollama) or `http://127.0.0.1:1234/v1` (LM Studio) — **not** `host.docker.internal` (that hostname is for bridge networking and will fail under host mode).
+
+On startup, if the URL port is `11434` or `1234`, the bot probes `/models` and exits if it cannot connect.
 
 Stop / remove:
 

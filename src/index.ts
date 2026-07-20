@@ -9,6 +9,7 @@ import { getDb, closeDb } from "./db/client.ts";
 import { handleInteraction } from "./discord/handlers/interactions.ts";
 import { handleMention } from "./discord/handlers/mentions.ts";
 import { registerCommands } from "./discord/registerCommands.ts";
+import { checkLocalLlmConnectivity } from "./llm/healthCheck.ts";
 import { logError, logInfo } from "./log.ts";
 
 const client = new Client({
@@ -87,6 +88,13 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
     void shutdown(signal);
   });
+}
+
+try {
+  await checkLocalLlmConnectivity();
+} catch (error) {
+  logError("Local LLM connectivity check failed", { llmBaseUrl: config.llmBaseUrl }, error);
+  process.exit(1);
 }
 
 logInfo("Connecting to Discord…");
