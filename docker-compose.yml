@@ -1,5 +1,6 @@
 services:
   game-night-bot:
+    container_name: game-night-bot
     build: .
     env_file: .env
     environment:
